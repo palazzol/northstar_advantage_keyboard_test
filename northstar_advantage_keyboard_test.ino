@@ -1,9 +1,16 @@
 
-#define STROBE 2
+#define STROBE A0
+
+#define LED 13
+
+#define led_on()  PORTB |= 0x20
+#define led_off() PORTB &= 0xdf
 
 // D0-D7
 //int data[8] = { 3,4,5,6,7,8,9,10 };
-int data[8] = { 10,9,8,7,6,5,4,3 };
+//int data[8] = { 10,9,8,7,6,5,4,3 };
+int data[8] = { 8,9,10,11,4,5,6,7 };
+
 // Keycodes from copper layer
 byte table[12][8] = { { 0, 0, 37, 54, 87, 36, 53, 65 }, 
                       { 0, 35, 52, 68, 86, 0, 18, 0 },  
@@ -27,53 +34,100 @@ char *names[88] = {
 "SPACE",
 "F1","F2","F3","F4","F5","F6","F7","F8","F9","F10","F11","F12","F13","F14","F15","n-","n,","CURSR LOCK"
 };
-void writeAddress(int addr)
+int writeAddressAndReadData(int addr)
 {
-  // STROBE GOES LOW
-  digitalWrite(STROBE, 0);
-  delay(1);
+  led_on();
+
+  // write address bits
+  DDRB |= 0x0f;
+  DDRD |= 0xf0;
+  PORTB = (PORTB & 0xf0) | (addr & 0x0f);
+  PORTD = (PORTD & 0x0f) | (addr & 0xf0);
   
   // ASSERT ADDRESS
-  for(int i=0;i<8;i++) {
-    digitalWrite(data[i], (addr>>i)&1); 
-  }
-  for(int i=0;i<8;i++) {
-    pinMode(data[i], OUTPUT);
-  }
-  delay(1);
+  //for(int i=0;i<8;i++) {
+  //  pinMode(data[i], OUTPUT);
+  //  digitalWrite(data[i], (addr>>i)&1); 
+  //}
+  
+  delayMicroseconds(10);
+
+  led_off();
+
+  noInterrupts();
   
   // STROBE GOES HIGH
-  digitalWrite(STROBE, 1);
+  
+  //digitalWrite(STROBE, 1);
+  PORTC |= 0x01;
+  
+  delayMicroseconds(9);
+
+  led_on();
+  
+  // DEASSERT ADDRESS
+  // take address off the bus
+  DDRB &= 0xf0;
+  DDRD &= 0x0f;
+  PORTB = (PORTB & 0xf0);
+  PORTD = (PORTD & 0x0f);
+  
+  interrupts();
+  
+  //for(int i=0;i<8;i++) {
+  //  pinMode(data[i], INPUT);
+  //}
+  delayMicroseconds(20);
+
+  led_off();
+
+  int rv = readData();
+
+  delayMicroseconds(7);
+
+  led_on();
+
+  // STROBE GOES LOW
+  PORTC &= 0xfe;
+  
+  //digitalWrite(STROBE, 0);
   //delay(10);
 
-  // DEASSERT ADDRESS
-  for(int i=0;i<8;i++) {
-    pinMode(data[i], INPUT);
-  }
+  led_off();
+  
+  return rv;
 }
 
 int readData()
 {
   // READ BUS
-  int rv = 0;
-  for(int i=7;i>=0;i--) {
-    rv <<= 1;
-    rv = rv | digitalRead(data[i]);
-  }
-  return rv;
+  byte data = PINB & 0x0f;
+  data |= PIND & 0xf0;
+  return data;
+  //if (addr>12) addr=0; // temp
+  
+  //int rv = 0;
+  //for(int i=7;i>=0;i--) {
+  //  rv <<= 1;
+  //  rv = rv | digitalRead(data[i]);
+  //}
+  //return rv;
 }
 
 void setup() {
   // put your setup code here, to run once:
+  pinMode(LED, OUTPUT);
+  digitalWrite(LED, 0);
   pinMode(STROBE, OUTPUT);
-  digitalWrite(STROBE, 1);
+  digitalWrite(STROBE, 0);
   for(int i=0;i<8;i++) {
     pinMode(data[i], INPUT);
-    digitalWrite(data[i], 0);
+    //digitalWrite(data[i], 0);
   }
   Serial.begin(115200);
 }
 
+#if 0
 void blinky(){
   writeAddress(0x20); //cursor on
   delay(200);
@@ -84,20 +138,24 @@ void blinky(){
   writeAddress(0x40); //caps off
   delay(200);
 }
+#endif
 
 void loop() {
 
   //blinky();
   int rv = 0;
   int d;
+  int i = 0;
   for(int i=0;i<12;i++)
   {
-    writeAddress(i);
-    delay(2);
-    d = readData();
+    d = writeAddressAndReadData(i);
+    //delay(2);
+    //d = readData();
     rv |= printChar(i,d);
   }
   if (rv) Serial.println();
+  delay(5);
+
 }
 
 int printChar(int addr, int data){
